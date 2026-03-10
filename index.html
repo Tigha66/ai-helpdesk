@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Helpdesk Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      margin-bottom: 30px;
+    }
+    header h1 { font-size: 1.8rem; }
+    .badge {
+      background: #10b981;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+    }
+    
+    .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab {
+      padding: 10px 20px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: all 0.3s;
+    }
+    .tab:hover { background: rgba(255,255,255,0.2); }
+    .tab.active { background: #3b82f6; }
+    
+    .section { display: none; }
+    .section.active { display: block; }
+    
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+    .stat-card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+    .stat-value { font-size: 2rem; font-weight: bold; color: #3b82f6; }
+    .stat-label { color: #94a3b8; font-size: 0.9rem; margin-top: 4px; }
+    
+    /* Cards */
+    .card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card h2 { font-size: 1.2rem; margin-bottom: 16px; }
+    
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    th { color: #94a3b8; font-weight: 500; font-size: 0.85rem; }
+    
+    /* Status badges */
+    .status { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; }
+    .status-open { background: #f59e0b; }
+    .status-progress { background: #3b82f6; }
+    .status-resolved { background: #10b981; }
+    .status-pending { background: #ef4444; }
+    
+    .priority-high { color: #ef4444; }
+    .priority-medium { color: #f59e0b; }
+    .priority-low { color: #10b981; }
+    
+    /* Chat */
+    .chat-container {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 20px;
+      height: 500px;
+    }
+    .chat-list {
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+      overflow-y: auto;
+    }
+    .chat-item {
+      padding: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      cursor: pointer;
+    }
+    .chat-item:hover { background: rgba(255,255,255,0.05); }
+    .chat-item.active { background: rgba(59, 130, 246, 0.3); }
+    .chat-name { font-weight: 500; }
+    .chat-preview { color: #94a3b8; font-size: 0.85rem; }
+    
+    .chat-main {
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+    }
+    .chat-messages { flex: 1; padding: 16px; overflow-y: auto; }
+    .message { margin-bottom: 12px; padding: 10px 14px; border-radius: 12px; max-width: 75%; }
+    .message.user { background: #3b82f6; margin-left: auto; }
+    .message.assistant { background: rgba(255,255,255,0.1); margin-right: auto; }
+    .message.ai-badge { font-size: 0.7rem; color: #10b981; display: block; margin-top: 4px; }
+    
+    .chat-input {
+      display: flex;
+      gap: 10px;
+      padding: 16px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .chat-input input {
+      flex: 1;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+    }
+    
+    /* Forms */
+    .form-group { margin-bottom: 12px; }
+    label { display: block; margin-bottom: 4px; color: #94a3b8; font-size: 0.85rem; }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 0.95rem;
+    }
+    button.btn {
+      padding: 10px 20px;
+      background: #3b82f6;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    button.btn:hover { background: #2563eb; }
+    
+    /* KB List */
+    .kb-item {
+      background: rgba(255,255,255,0.05);
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+    .kb-question { font-weight: 500; color: #3b82f6; }
+    .kb-answer { color: #94a3b8; margin-top: 8px; }
+    .kb-category { font-size: 0.75rem; color: #64748b; }
+    
+    @media (max-width: 768px) {
+      .chat-container { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>🤖 AI Helpdesk</h1>
+        <span class="badge">AI-Powered Support</span>
+      </div>
+      <div id="pricing-info"></div>
+    </header>
+    
+    <div class="tabs">
+      <button class="tab active" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="tickets">Tickets</button>
+      <button class="tab" data-tab="conversations">Conversations</button>
+      <button class="tab" data-tab="knowledgebase">Knowledge Base</button>
+      <button class="tab" data-tab="analytics">Analytics</button>
+    </div>
+    
+    <!-- Dashboard -->
+    <div id="dashboard" class="section active">
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-value" id="totalMessages">0</div>
+          <div class="stat-label">Total Messages</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="aiResolved">0</div>
+          <div class="stat-label">AI Resolved</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="openTickets">0</div>
+          <div class="stat-label">Open Tickets</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="aiRate">0%</div>
+          <div class="stat-label">AI Resolution Rate</div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h2>Quick Actions</h2>
+        <button class="btn" onclick="switchTab('conversations')">View Conversations</button>
+        <button class="btn" onclick="switchTab('tickets')">Create Ticket</button>
+      </div>
+    </div>
+    
+    <!-- Tickets -->
+    <div id="tickets" class="section">
+      <div class="card">
+        <h2>Create New Ticket</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+          <div class="form-group">
+            <label>Subject</label>
+            <input type="text" id="ticketSubject" placeholder="Issue subject">
+          </div>
+          <div class="form-group">
+            <label>Priority</label>
+            <select id="ticketPriority">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Customer Email</label>
+            <input type="email" id="ticketEmail" placeholder="customer@example.com">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="ticketDesc" rows="3" placeholder="Describe the issue..."></textarea>
+        </div>
+        <button class="btn" onclick="createTicket()">Create Ticket</button>
+      </div>
+      
+      <div class="card">
+        <h2>All Tickets</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Subject</th>
+              <th>Priority</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="ticketsTable"></tbody>
+        </table>
+      </div>
+    </div>
+    
+    <!-- Conversations -->
+    <div id="conversations" class="section">
+      <div class="chat-container">
+        <div class="chat-list" id="chatList">
+          <div style="padding: 20px; color: #94a3b8;">Loading conversations...</div>
+        </div>
+        <div class="chat-main">
+          <div class="chat-messages" id="chatMessages">
+            <div style="text-align: center; color: #94a3b8; margin-top: 100px;">Select a conversation</div>
+          </div>
+          <div class="chat-input">
+            <input type="text" id="chatInput" placeholder="Type your message..." onkeypress="handleChatKey(event)">
+            <button class="btn" onclick="sendChat()">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Knowledge Base -->
+    <div id="knowledgebase" class="section">
+      <div class="card">
+        <h2>Add Knowledge Base Entry</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label>Question Keywords</label>
+            <input type="text" id="kbQuestion" placeholder="e.g., refund policy">
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select id="kbCategory">
+              <option value="general">General</option>
+              <option value="billing">Billing</option>
+              <option value="technical">Technical</option>
+              <option value="orders">Orders</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Answer</label>
+          <textarea id="kbAnswer" rows="2" placeholder="The answer to this question..."></textarea>
+        </div>
+        <button class="btn" onclick="addKB()">Add to Knowledge Base</button>
+      </div>
+      
+      <div class="card">
+        <h2>Knowledge Base Entries</h2>
+        <div id="kbList"></div>
+      </div>
+    </div>
+    
+    <!-- Analytics -->
+    <div id="analytics" class="section">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="analyticsTotal">0</div>
+          <div class="stat-label">Total Messages</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="analyticsAI">0</div>
+          <div class="stat-label">AI Resolved</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="analyticsHuman">0</div>
+          <div class="stat-label">Human Resolved</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="analyticsSatisfaction">N/A</div>
+          <div class="stat-label">Satisfaction</div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h2>Pricing Model</h2>
+        <table>
+          <tr><th>Plan</th><th>Price</th></tr>
+          <tr><td>Per Seat</td><td>$49/month</td></tr>
+          <tr><td>Per Message</td><td>$0.01</td></tr>
+          <tr><td><strong>Example (5 seats, 10k msgs)</strong></td><td><strong>$345/month</strong></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin;
+    let currentConvId = null;
+    
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(t => {
+      t.addEventListener('click', () => {
+        switchTab(t.dataset.tab);
+      });
+    });
+    
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+      loadData(tabId);
+    }
+    
+    async function loadData(tab) {
+      if (tab === 'dashboard') loadDashboard();
+      if (tab === 'tickets') loadTickets();
+      if (tab === 'conversations') loadConversations();
+      if (tab === 'knowledgebase') loadKB();
+      if (tab === 'analytics') loadAnalytics();
+    }
+    
+    async function loadDashboard() {
+      const res = await fetch(`${API}/api/analytics`);
+      const data = await res.json();
+      document.getElementById('totalMessages').textContent = data.overview.totalMessages;
+      document.getElementById('aiResolved').textContent = data.overview.aiResolved;
+      document.getElementById('openTickets').textContent = data.tickets.open;
+      document.getElementById('aiRate').textContent = data.overview.aiResolutionRate + '%';
+    }
+    
+    async function loadTickets() {
+      const res = await fetch(`${API}/api/tickets`);
+      const data = await res.json();
+      const tbody = document.getElementById('ticketsTable');
+      tbody.innerHTML = data.tickets.map(t => `
+        <tr>
+          <td>${t.id}</td>
+          <td>${t.subject}</td>
+          <td class="priority-${t.priority}">${t.priority}</td>
+          <td><span class="status status-${t.status}">${t.status}</span></td>
+          <td>${new Date(t.createdAt).toLocaleDateString()}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="5">No tickets</td></tr>';
+    }
+    
+    async function createTicket() {
+      const subject = document.getElementById('ticketSubject').value;
+      const priority = document.getElementById('ticketPriority').value;
+      const description = document.getElementById('ticketDesc').value;
+      const email = document.getElementById('ticketEmail').value;
+      
+      if (!subject) return alert('Subject required');
+      
+      await fetch(`${API}/api/tickets`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ subject, priority, description, customerEmail: email })
+      });
+      
+      alert('Ticket created!');
+      loadTickets();
+    }
+    
+    async function loadConversations() {
+      const res = await fetch(`${API}/api/conversations`);
+      const data = await res.json();
+      const list = document.getElementById('chatList');
+      list.innerHTML = data.conversations.map(c => `
+        <div class="chat-item ${currentConvId === c.id ? 'active' : ''}" onclick="selectConv('${c.id}')">
+          <div class="chat-name">${c.userName} (${c.channel})</div>
+          <div class="chat-preview">${c.messages[c.messages.length-1]?.content.substring(0, 40)}...</div>
+        </div>
+      `).join('') || '<div style="padding:20px;color:#94a3b8">No conversations</div>';
+    }
+    
+    async function selectConv(id) {
+      currentConvId = id;
+      loadConversations();
+      const res = await fetch(`${API}/api/conversations/${id}`);
+      const data = await res.json();
+      const msgs = document.getElementById('chatMessages');
+      msgs.innerHTML = data.conversation.messages.map(m => `
+        <div class="message ${m.role}">
+          ${m.content}
+          ${m.isAI ? '<span class="message ai-badge">🤖 AI</span>' : ''}
+        </div>
+      `).join('');
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+    
+    async function sendChat() {
+      const msg = document.getElementById('chatInput').value;
+      if (!msg || !currentConvId) return;
+      
+      const res = await fetch(`${API}/api/webhook`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ from: 'web-user', message: msg, channel: 'web' })
+      });
+      
+      document.getElementById('chatInput').value = '';
+      selectConv(currentConvId);
+    }
+    
+    function handleChatKey(e) { if (e.key === 'Enter') sendChat(); }
+    
+    async function loadKB() {
+      const res = await fetch(`${API}/api/knowledgebase`);
+      const data = await res.json();
+      document.getElementById('kbList').innerHTML = data.knowledgeBase.map(kb => `
+        <div class="kb-item">
+          <div class="kb-question">${kb.question}</div>
+          <div class="kb-answer">${kb.answer}</div>
+          <div class="kb-category">Category: ${kb.category}</div>
+        </div>
+      `).join('');
+    }
+    
+    async function addKB() {
+      const question = document.getElementById('kbQuestion').value;
+      const answer = document.getElementById('kbAnswer').value;
+      const category = document.getElementById('kbCategory').value;
+      
+      await fetch(`${API}/api/knowledgebase`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ question, answer, category })
+      });
+      
+      loadKB();
+    }
+    
+    async function loadAnalytics() {
+      const res = await fetch(`${API}/api/analytics`);
+      const data = await res.json();
+      document.getElementById('analyticsTotal').textContent = data.overview.totalMessages;
+      document.getElementById('analyticsAI').textContent = data.overview.aiResolved;
+      document.getElementById('analyticsHuman').textContent = data.overview.humanResolved;
+      document.getElementById('analyticsSatisfaction').textContent = data.satisfaction;
+    }
+    
+    // Initial load
+    loadDashboard();
+  </script>
+</body>
+</html>
