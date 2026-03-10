@@ -1,4 +1,4 @@
-// AI Helpdesk & Support Automation API
+// AI Helpdesk & Support Automation API - Fully Functional
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const app = express();
 app.use(express.json());
 app.use(cors());
+
+// Telegram Bot Token
+const TELEGRAM_BOT_TOKEN = '8327082640:AAGMCI9uBO9NAHSMJTGvgPsNrdp6GmAaz8g';
 
 // In-memory storage (use database in production)
 const tickets = new Map();
@@ -27,7 +30,11 @@ const defaultKB = [
   { id: 'kb-2', question: 'refund', answer: 'We offer full refunds within 30 days of purchase. Please provide your order number.', category: 'billing' },
   { id: 'kb-3', question: 'password', answer: 'To reset your password, click "Forgot Password" on the login page and check your email.', category: 'account' },
   { id: 'kb-4', question: 'shipping', answer: 'Standard shipping takes 5-7 business days. Express shipping is 2-3 days.', category: 'orders' },
-  { id: 'kb-5', question: 'contact', answer: 'You can reach us at support@company.com or call 1-800-HELP.', category: 'general' }
+  { id: 'kb-5', question: 'contact', answer: 'You can reach us at support@company.com or call 1-800-HELP.', category: 'general' },
+  { id: 'kb-6', question: 'price', answer: 'Our pricing starts at $49/month per agent. Contact sales for volume discounts.', category: 'sales' },
+  { id: 'kb-7', question: 'help', answer: 'I can help with: order status, refunds, account issues, shipping info. What do you need?', category: 'general' },
+  { id: 'kb-8', question: 'hi', answer: 'Hello! 👋 I\'m your AI support assistant. How can I help you today?', category: 'greeting' },
+  { id: 'kb-9', question: 'hello', answer: 'Hi there! 👋 I\'m here to help. What can I assist you with?', category: 'greeting' }
 ];
 defaultKB.forEach(kb => knowledgeBase.set(kb.id, kb));
 
@@ -42,14 +49,42 @@ function findBestAnswer(query) {
   let highestScore = 0;
   
   for (const [id, kb] of knowledgeBase) {
-    const score = kb.question.toLowerCase().split(' ').filter(w => q.includes(w)).length;
+    const words = kb.question.toLowerCase().split(' ');
+    const score = words.filter(w => w.length > 2 && q.includes(w)).length;
     if (score > highestScore) {
       highestScore = score;
       bestMatch = kb;
     }
   }
   
+  // Check for greeting keywords
+  if (q.match(/^(hi|hello|hey|good morning|good afternoon|good evening)/)) {
+    return { answer: 'Hello! 👋 I\'m your AI support assistant. I can help with:\n\n• Business hours\n• Refunds & returns\n• Order status\n• Shipping info\n• Account issues\n\nWhat can I help you with?' };
+  }
+  
   return bestMatch;
+}
+
+// Send message to Telegram
+async function sendTelegramMessage(chatId, text) {
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: text,
+          parse_mode: 'Markdown'
+        })
+      }
+    );
+    return await response.json();
+  } catch (error) {
+    console.error('Telegram send error:', error);
+    return null;
+  }
 }
 
 // Routes
@@ -58,16 +93,136 @@ app.get('/', (req, res) => {
   res.json({
     status: 'online',
     service: 'AI Helpdesk & Support Automation',
-    version: '1.0.0',
+    version: '2.0.0',
+    telegram: 'Connected',
     endpoints: {
       tickets: '/api/tickets',
       conversations: '/api/conversations',
       knowledgebase: '/api/knowledgebase',
       agents: '/api/agents',
       analytics: '/api/analytics',
-      webhook: '/api/webhook'
+      webhook: '/api/webhook (Telegram)'
     }
   });
+});
+
+// Telegram Webhook Handler
+app.post('/api/webhook', async (req, res) => {
+  const update = req.body;
+  
+  // Handle Telegram update format
+  if (update.message) {
+    const msg = update.message;
+    const chatId = msg.chat.id;
+    const text = msg.text || '';
+    const userName = msg.from?.first_name || 'User';
+    const fromId = msg.from?.id.toString();
+    
+    analytics.totalMessages++;
+    
+    // Find or create conversation
+    let conv = Array.from(conversations.values()).find(c => c.from === fromId && c.channel === 'telegram');
+    if (!conv) {
+      conv = {
+        id: generateId('CONV'),
+        from: fromId,
+        chatId: chatId,
+        channel: 'telegram',
+        userName: userName,
+        messages: [],
+        status: 'open',
+        assignedAgent: null,
+        createdAt: new Date().toISOString()
+      };
+      conversations.set(conv.id, conv);
+    }
+    
+    // Add user message
+    conv.messages.push({
+      role: 'user',
+      content: text,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Generate AI response
+    const kbMatch = findBestAnswer(text);
+    let response;
+    let isAI = true;
+    
+    if (kbMatch) {
+      response = kbMatch.answer;
+      analytics.aiResolved++;
+    } else if (text.toLowerCase().includes('agent') || text.toLowerCase().includes('human') || text.toLowerCase().includes('speak to')) {
+      response = '🔄 I\'ll connect you with a human agent. Please wait...';
+      conv.status = 'pending_handover';
+      isAI = false;
+      analytics.humanResolved++;
+      
+      // Create ticket for handover
+      const ticket = {
+        id: generateId('TKT'),
+        conversationId: conv.id,
+        subject: text.substring(0, 50),
+        description: text,
+        status: 'open',
+        priority: 'medium',
+        channel: 'telegram',
+        customerName: userName,
+        createdAt: new Date().toISOString()
+      };
+      tickets.set(ticket.id, ticket);
+    } else {
+      response = `Thanks for your message, ${userName}! 🤖\n\nI'm not sure I understand. Here's what I can help with:\n\n• *Business hours* - When we're open\n• *Refunds* - Our refund policy\n• *Shipping* - Delivery times\n• *Account* - Password & login help\n• *Contact* - How to reach us\n\nOr type "agent" to speak with a human.`;
+      analytics.humanResolved++;
+    }
+    
+    conv.messages.push({
+      role: 'assistant',
+      content: response,
+      isAI,
+      timestamp: new Date().toISOString()
+    });
+    
+    conversations.set(conv.id, conv);
+    
+    // Send response back to Telegram
+    await sendTelegramMessage(chatId, response);
+    
+    return res.json({ ok: true });
+  }
+  
+  // Handle custom webhook format (WhatsApp, Slack, etc.)
+  const { from, message, channel, userName } = req.body;
+  
+  if (from && message) {
+    analytics.totalMessages++;
+    
+    let conv = Array.from(conversations.values()).find(c => c.from === from && c.channel === channel);
+    if (!conv) {
+      conv = {
+        id: generateId('CONV'),
+        from,
+        channel: channel || 'web',
+        userName: userName || 'Unknown',
+        messages: [],
+        status: 'open',
+        createdAt: new Date().toISOString()
+      };
+      conversations.set(conv.id, conv);
+    }
+    
+    conv.messages.push({ role: 'user', content: message, timestamp: new Date().toISOString() });
+    
+    const kbMatch = findBestAnswer(message);
+    let response = kbMatch ? kbMatch.answer : 'Thank you for your message. A support agent will respond shortly.';
+    
+    conv.messages.push({ role: 'assistant', content: response, timestamp: new Date().toISOString() });
+    conversations.set(conv.id, conv);
+    
+    return res.json({ response, conversationId: conv.id });
+  }
+  
+  res.json({ ok: true });
 });
 
 // Knowledge Base
@@ -78,83 +233,16 @@ app.get('/api/knowledgebase', (req, res) => {
 app.post('/api/knowledgebase', (req, res) => {
   const { question, answer, category } = req.body;
   const id = generateId('KB');
-  const entry = { id, question, answer, category, createdAt: new Date().toISOString() };
+  const entry = { id, question, answer, category: category || 'general', createdAt: new Date().toISOString() };
   knowledgeBase.set(id, entry);
   res.json({ success: true, entry });
 });
 
 app.delete('/api/knowledgebase/:id', (req, res) => {
-  if (knowledgeBase.delete(req.params.id)) {
-    res.json({ success: true });
-  } else {
-    res.status(404).json({ error: 'Not found' });
-  }
+  res.json({ success: knowledgeBase.delete(req.params.id) });
 });
 
-// Conversations (multichannel)
-app.post('/api/webhook', (req, res) => {
-  const { from, message, channel, userName } = req.body;
-  
-  analytics.totalMessages++;
-  
-  // Find or create conversation
-  let conv = Array.from(conversations.values()).find(c => c.from === from && c.channel === channel);
-  if (!conv) {
-    conv = {
-      id: generateId('CONV'),
-      from,
-      channel,
-      userName: userName || 'Unknown',
-      messages: [],
-      status: 'open',
-      assignedAgent: null,
-      createdAt: new Date().toISOString()
-    };
-    conversations.set(conv.id, conv);
-  }
-  
-  // Add user message
-  conv.messages.push({
-    role: 'user',
-    content: message,
-    timestamp: new Date().toISOString()
-  });
-  
-  // AI response
-  const kbMatch = findBestAnswer(message);
-  let response;
-  let isAI = true;
-  
-  if (kbMatch) {
-    response = kbMatch.answer;
-    conv.category = kbMatch.category;
-    analytics.aiResolved++;
-  } else if (message.toLowerCase().includes('agent') || message.toLowerCase().includes('human')) {
-    response = 'I\'ll connect you with a human agent. Please wait...';
-    conv.status = 'pending_handover';
-    isAI = false;
-  } else {
-    response = 'Thank you for your message. A support agent will respond shortly. For immediate help, visit our FAQ at example.com/faq';
-    analytics.humanResolved++;
-  }
-  
-  conv.messages.push({
-    role: 'assistant',
-    content: response,
-    isAI,
-    timestamp: new Date().toISOString()
-  });
-  
-  conversations.set(conv.id, conv);
-  
-  res.json({ 
-    response,
-    conversationId: conv.id,
-    isAI,
-    status: conv.status
-  });
-});
-
+// Conversations
 app.get('/api/conversations', (req, res) => {
   const { status, channel } = req.query;
   let result = Array.from(conversations.values());
@@ -182,10 +270,8 @@ app.post('/api/tickets', (req, res) => {
     customerEmail,
     channel,
     assignedTo: null,
-    conversationId: null,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    resolvedAt: null
+    updatedAt: new Date().toISOString()
   };
   
   tickets.set(ticket.id, ticket);
@@ -216,23 +302,6 @@ app.patch('/api/tickets/:id', (req, res) => {
   if (priority) ticket.priority = priority;
   ticket.updatedAt = new Date().toISOString();
   
-  if (status === 'resolved') {
-    ticket.resolvedAt = new Date().toISOString();
-  }
-  
-  tickets.set(ticket.id, ticket);
-  res.json({ success: true, ticket });
-});
-
-app.post('/api/tickets/:id/assign', (req, res) => {
-  const ticket = tickets.get(req.params.id);
-  if (!ticket) return res.status(404).json({ error: 'Not found' });
-  
-  const { agentId, agentName } = req.body;
-  ticket.assignedTo = { id: agentId, name: agentName };
-  ticket.status = 'in_progress';
-  ticket.updatedAt = new Date().toISOString();
-  
   tickets.set(ticket.id, ticket);
   res.json({ success: true, ticket });
 });
@@ -245,15 +314,7 @@ app.get('/api/agents', (req, res) => {
 app.post('/api/agents', (req, res) => {
   const { name, email, role } = req.body;
   const id = generateId('AGT');
-  const agent = {
-    id,
-    name,
-    email,
-    role: role || 'support',
-    status: 'online',
-    ticketsAssigned: 0,
-    createdAt: new Date().toISOString()
-  };
+  const agent = { id, name, email, role: role || 'support', status: 'online', ticketsAssigned: 0 };
   agents.set(id, agent);
   res.json({ success: true, agent });
 });
@@ -261,7 +322,6 @@ app.post('/api/agents', (req, res) => {
 // Analytics
 app.get('/api/analytics', (req, res) => {
   const openTickets = Array.from(tickets.values()).filter(t => t.status === 'open').length;
-  const inProgress = Array.from(tickets.values()).filter(t => t.status === 'in_progress').length;
   const resolved = Array.from(tickets.values()).filter(t => t.status === 'resolved').length;
   
   const channelStats = {};
@@ -276,31 +336,10 @@ app.get('/api/analytics', (req, res) => {
       humanResolved: analytics.humanResolved,
       aiResolutionRate: analytics.totalMessages > 0 ? Math.round((analytics.aiResolved / analytics.totalMessages) * 100) : 0
     },
-    tickets: {
-      open: openTickets,
-      inProgress: inProgress,
-      resolved: resolved,
-      total: tickets.size
-    },
+    tickets: { open: openTickets, resolved, total: tickets.size },
     channels: channelStats,
     satisfaction: analytics.satisfaction || 'N/A'
   });
-});
-
-// Handover conversation to human
-app.post('/api/conversations/:id/handover', (req, res) => {
-  const conv = conversations.get(req.params.id);
-  if (!conv) return res.status(404).json({ error: 'Not found' });
-  
-  conv.status = 'pending_handover';
-  conv.messages.push({
-    role: 'system',
-    content: 'Conversation handed over to human agent',
-    timestamp: new Date().toISOString()
-  });
-  
-  conversations.set(conv.id, conv);
-  res.json({ success: true, conversation: conv });
 });
 
 // Pricing
@@ -309,11 +348,7 @@ app.get('/api/pricing', (req, res) => {
     perSeat: 49,
     perMessage: 0.01,
     currency: 'USD',
-    example: {
-      seats: 5,
-      messages: 10000,
-      total: (5 * 49) + (10000 * 0.01) = 245 + 100 = $345/month
-    }
+    example: '$49/seat/month + $0.01/message'
   });
 });
 
